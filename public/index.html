@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>城市隧道通风与火灾疏散推演平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◳</span>
+    <div>
+      <h1>城市隧道通风与火灾疏散推演平台</h1>
+      <div class="sub">实时烟雾蔓延 · 人员疏散 · 风机联动 · 多方案对比</div>
+    </div>
+  </div>
+  <div class="clock" id="simClock">00:00</div>
+  <div class="status-pill" id="statusPill">配置中</div>
+</header>
+
+<div class="alert-banner" id="alertBanner" hidden></div>
+
+<main class="layout">
+  <aside class="panel side" id="controlPanel">
+    <section class="card">
+      <h2>场景设置</h2>
+      <label class="field">
+        <span>起火位置 (区段)</span>
+        <div class="row">
+          <input type="range" id="fireSeg" min="0" max="23" value="12">
+          <b id="fireSegVal">12</b>
+        </div>
+      </label>
+      <label class="field">
+        <span>火势等级</span>
+        <div class="seg-group" id="fireLevel">
+          <button data-level="1" class="seg-btn">Ⅰ 小型</button>
+          <button data-level="2" class="seg-btn active">Ⅱ 中型</button>
+          <button data-level="3" class="seg-btn">Ⅲ 大型</button>
+        </div>
+      </label>
+      <label class="field">
+        <span>交通密度</span>
+        <select id="densitySel">
+          <option value="low">低 (畅通)</option>
+          <option value="medium" selected>中</option>
+          <option value="high">高 (缓行)</option>
+          <option value="jam">拥堵</option>
+        </select>
+      </label>
+      <button class="btn primary block" id="igniteBtn">🚒 触发火灾并初始化推演</button>
+    </section>
+
+    <section class="card" id="runCard">
+      <h2>推演控制</h2>
+      <div class="run-btns">
+        <button class="btn" id="startBtn" disabled>▶ 启动</button>
+        <button class="btn" id="pauseBtn" disabled>⏸ 暂停</button>
+        <button class="btn" id="stepBtn" disabled>⏭ 单步</button>
+        <button class="btn danger" id="resetBtn">↺ 重置</button>
+      </div>
+      <label class="field">
+        <span>推演速度</span>
+        <div class="seg-group" id="speedGroup">
+          <button data-speed="1" class="seg-btn">1×</button>
+          <button data-speed="2" class="seg-btn active">2×</button>
+          <button data-speed="4" class="seg-btn">4×</button>
+          <button data-speed="8" class="seg-btn">8×</button>
+        </div>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>风机控制</h2>
+      <div class="fan-list" id="fanList"></div>
+    </section>
+
+    <section class="card">
+      <h2>疏散通道</h2>
+      <div class="exit-list" id="exitList"></div>
+    </section>
+  </aside>
+
+  <section class="panel center">
+    <div class="legend">
+      <span><i class="dot safe"></i>正常</span>
+      <span><i class="dot warn"></i>预警</span>
+      <span><i class="dot danger"></i>危险</span>
+      <span><i class="dot lethal"></i>致命</span>
+      <span class="legend-sep">|</span>
+      <span>🚗 车辆</span>
+      <span>🚶 疏散人员</span>
+      <span>🌀 风机</span>
+      <span>🚪 出口/横通道</span>
+      <span class="legend-sep">|</span>
+      <span>烟雾箭头表示蔓延方向</span>
+    </div>
+    <canvas id="tunnelCanvas" height="330"></canvas>
+
+    <div class="metrics-row" id="metricsRow"></div>
+
+    <div class="card detail-card" id="detailCard">
+      <h2>区段详情 <span class="hint">点击隧道任一区段查看</span></h2>
+      <div id="detailBody" class="detail-empty">未选择区段</div>
+    </div>
+
+    <div class="card timeline-card">
+      <div class="timeline-head">
+        <h2>决策时间轴</h2>
+        <div class="row-actions">
+          <button class="btn small" id="seekBtn" disabled>从此节点继续</button>
+          <button class="btn small" id="savePlanBtn" disabled>存为方案</button>
+        </div>
+      </div>
+      <canvas id="timelineCanvas" height="72"></canvas>
+      <div class="timeline-events" id="timelineEvents"></div>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <section class="card">
+      <h2>实时告警</h2>
+      <div class="alert-list" id="alertList">
+        <div class="muted">暂无告警</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head-row">
+        <h2>方案对比</h2>
+        <button class="btn small" id="compareBtn" disabled>同步回放</button>
+      </div>
+      <div class="plan-list" id="planList"></div>
+    </section>
+  </aside>
+</main>
+
+<div class="modal" id="compareModal" hidden>
+  <div class="modal-body wide">
+    <div class="modal-head">
+      <h2>方案同步回放对比</h2>
+      <button class="btn small" id="closeCompare">✕</button>
+    </div>
+    <div class="compare-controls">
+      <button class="btn small" id="cmpPlay">▶ 同步播放</button>
+      <button class="btn small" id="cmpPause">⏸</button>
+      <input type="range" id="cmpScrub" min="0" max="600" value="0">
+      <span id="cmpClock">00:00</span>
+    </div>
+    <div id="compareCharts"></div>
+    <table class="compare-table" id="compareTable"></table>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/sim/constants.js"></script>
+<script src="/sim/engine.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/render.js"></script>
+<script src="/js/compare.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

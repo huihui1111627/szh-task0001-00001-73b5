@@ -1,0 +1,118 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>ui-test</title></head>
+<body><div id="result">RUNNING</div><pre id="log"></pre>
+<script src="/sim/constants.js"></script>
+<script src="/sim/engine.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/render.js"></script>
+<script src="/js/compare.js"></script>
+<script>
+// 内存版 fetch 桩, 消除无头浏览器虚拟时间与真实网络的竞态
+(function(){
+  const mem = { session: null, plans: {} };
+  window.fetch = async function(url, opts){
+    opts = opts || {};
+    const u = String(url);
+    await new Promise(r=>setTimeout(r,2));
+    let body = {};
+    if (opts.body) body = JSON.parse(opts.body);
+    let json;
+    if (u.endsWith('/api/session')) {
+      if (opts.method === 'POST') { mem.session = { sim: body.sim, savedAt: Date.now() }; json = { ok: true }; }
+      else if (opts.method === 'DELETE') { mem.session = null; json = { ok: true }; }
+      else json = { session: mem.session };
+    } else if (u.endsWith('/api/plans') && !/\/api\/plans\//.test(u)) {
+      if (opts.method === 'POST') { mem.plans[body.id || ('p'+Date.now())] = body; json = { plan: body }; }
+      else json = { plans: Object.values(mem.plans) };
+    } else {
+      const id = u.split('/').pop();
+      json = { plan: mem.plans[id] || null };
+    }
+    return { ok: true, json: async () => json };
+  };
+})();
+</script>
+<script src="/js/app.js"></script>
+<script>
+setTimeout(()=>{ document.title='RESULT:WATCHDOG '+(window.__step||'init'); }, 9000);
+// 自动化冒烟: 模拟用户操作, 校验 DOM 与状态
+(async () => {
+  const log = [];
+  const ok = (name, cond) => { log.push((cond ? 'PASS ' : 'FAIL ') + name); if(!cond) throw new Error(name); };
+  window.__step='wait-init';
+  await new Promise(r => setTimeout(r, 600)); // 等待 init/restore
+  const st = () => {
+    // app 内部 state 未暴露, 通过 DOM 间接验证
+  };
+  // 1. 初始渲染
+  ok('初始时钟 00:00', document.getElementById('simClock').textContent === '00:00');
+  ok('风机列表 5 台', document.querySelectorAll('#fanList .fan-item').length === 5);
+  ok('隧道 canvas 存在', document.getElementById('tunnelCanvas').width > 0);
+
+  // 2. 触发火灾
+  document.getElementById('fireSeg').value = 12;
+  window.__step='ignite';
+  document.getElementById('igniteBtn').click();
+  await new Promise(r => setTimeout(r, 100));
+  ok('起火后点火按钮禁用', document.getElementById('igniteBtn').disabled);
+  ok('启动按钮可用', !document.getElementById('startBtn').disabled);
+
+  // 3. 调整风机方向
+  const fanBtn = document.querySelector('#fanList .mini-btn[data-dir="1"]');
+  window.__step='fan';
+  fanBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  ok('风机开启后出现 active', !!document.querySelector('#fanList .mini-btn.active:not(.off)'));
+
+  // 4. 关闭一个横通道
+  const cxBtn = [...document.querySelectorAll('#exitList .mini-btn')].find(b=>b.textContent.trim()==='关闭');
+  window.__step='exit';
+  cxBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  ok('出口关闭后出现关闭样式', !!document.querySelector('.exit-item.closed'));
+
+  // 5. 单步推演 30 步
+  window.__step='steps';
+  for (let i=0;i<30;i++){ document.getElementById('stepBtn').click(); await new Promise(r=>setTimeout(r,0)); }
+  ok('推演时钟前进', document.getElementById('simClock').textContent !== '00:00');
+  const clock30 = document.getElementById('simClock').textContent;
+  log.push('30 步后时钟: ' + clock30);
+  ok('指标条显示受影响人员', /\d+/.test(document.querySelector('.metric.info .v').textContent));
+
+  // 6. 危险区段出现
+  const dangerSegs = document.querySelectorAll('.metric')[3].querySelector('.v').textContent;
+  log.push('危险区段数: ' + dangerSegs);
+  ok('出现危险区段', +dangerSegs >= 1);
+
+  // 7. 点击区段查看详情
+  const canvas = document.getElementById('tunnelCanvas');
+  const rect = { left: 0, top: 0, width: canvas.clientWidth };
+  const padL = 46, cellW = (canvas.clientWidth - padL - 16) / 24;
+  const ev = new MouseEvent('click', { clientX: rect.left + padL + 12*cellW + cellW/2, clientY: 200, bubbles: true });
+  canvas.dispatchEvent(ev);
+  await new Promise(r => setTimeout(r, 50));
+  ok('区段详情渲染', document.getElementById('detailBody').textContent.includes('#12'));
+  ok('详情含温度', document.getElementById('detailBody').textContent.includes('°C'));
+
+  // 8. 时间轴事件
+  const tlEvents = document.querySelectorAll('.tl-event').length;
+  log.push('时间轴事件数: ' + tlEvents);
+  ok('时间轴记录了决策', tlEvents >= 3);
+
+  // 9. 保存方案
+  window.prompt = () => '测试方案A';
+  window.__step='save';
+  document.getElementById('savePlanBtn').click();
+  await new Promise(r => setTimeout(r, 500));
+  ok('方案出现在列表', document.getElementById('planList').textContent.includes('测试方案A'));
+  window.__step='done';
+
+  document.title = 'RESULT:'+log.join('~');
+  document.getElementById('log').textContent = log.join('\n');
+  console.log('UITEST:\n' + log.join('\n') + '\nALL_UI_TESTS_PASSED');
+})().catch(e => {
+  document.getElementById('result').textContent = 'ERROR ' + e.message + '\n' + log.join('\n');
+  console.log('UITEST_ERROR ' + e.message); document.title='RESULT:ERROR '+e.message;
+});
+</script></body></html>
+  window.__step='detail';
+  window.__step='timeline';
