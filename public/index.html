@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>城市隧道通风与火灾疏散推演系统</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🚇</span>
+    <div>
+      <h1>城市隧道通风与火灾疏散推演系统</h1>
+      <div class="sub">车辆分布 · 烟雾蔓延 · 能见度 · 温度场 · 风机/疏散通道联动</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span id="recoverBanner" class="banner hidden">已恢复上次未完成推演，可从断点继续</span>
+    <button id="btnCompare" class="btn">📊 方案对比</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 左：场景设置与控制 -->
+  <section class="panel setup-panel">
+    <h2>推演场景设置</h2>
+    <label class="field">
+      <span>起火位置：第 <b id="fireSegVal">12</b> 区段（<b id="fireMeterVal">1200m</b>）</span>
+      <input type="range" id="fireSeg" min="0" max="23" value="12" />
+    </label>
+    <div class="field">
+      <span>火势等级</span>
+      <div class="seg-group" id="fireLevel">
+        <button data-v="1" class="chip">Ⅰ 级（小车）</button>
+        <button data-v="2" class="chip active">Ⅱ 级（客车）</button>
+        <button data-v="3" class="chip danger">Ⅲ 级（货车/危化）</button>
+      </div>
+    </div>
+    <label class="field">
+      <span>交通密度：<b id="densityVal">60%</b></span>
+      <input type="range" id="density" min="0" max="100" value="60" />
+    </label>
+    <input type="text" id="planName" class="text-input" placeholder="方案名称（可选）" />
+    <button id="btnCreate" class="btn primary block">▶ 新建处置方案</button>
+
+    <h2 class="mt">风机控制</h2>
+    <div class="fan-bulk">
+      <button class="btn small" id="fansEast">全部向东送风 →</button>
+      <button class="btn small" id="fansWest">← 全部向西送风</button>
+    </div>
+    <div id="fanList" class="fan-list"></div>
+
+    <h2 class="mt">疏散通道</h2>
+    <div id="exitList" class="exit-list"></div>
+  </section>
+
+  <!-- 中：隧道场景与时间轴 -->
+  <section class="panel scene-panel">
+    <div class="scene-head">
+      <div>
+        <h2 id="sessionTitle">尚未创建推演</h2>
+        <div id="sessionMeta" class="sub">设置参数后点击「新建处置方案」</div>
+      </div>
+      <div class="kpi-row" id="kpis"></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw" style="background:rgba(120,120,120,.15)"></i>无烟</span>
+      <span><i class="sw" style="background:rgba(80,80,80,.45)"></i>轻烟</span>
+      <span><i class="sw" style="background:rgba(40,40,40,.75)"></i>浓烟</span>
+      <span><i class="sw" style="background:linear-gradient(90deg,#ffd36b,#ff5a3c)"></i>高温</span>
+      <span>🚒 起火点</span>
+      <span>🚗 车辆（数字=辆）</span>
+      <span>🌀 风机</span>
+      <span>🚪 出口/横通道</span>
+    </div>
+
+    <div id="tunnel" class="tunnel"></div>
+    <div id="tunnelRuler" class="ruler"></div>
+
+    <div class="transport">
+      <button id="btnStart" class="btn primary">▶ 启动</button>
+      <button id="btnPause" class="btn">⏸ 暂停</button>
+      <button id="btnStep" class="btn">⏭ 单步</button>
+      <div class="clock" id="clock">00:00</div>
+      <div class="speed-note">推演步长 2 秒 · 每 0.5 秒推进一帧</div>
+    </div>
+
+    <h3>决策时间轴</h3>
+    <div class="timeline-wrap">
+      <div id="timeline" class="timeline">
+        <div id="tlCursor" class="tl-cursor"></div>
+      </div>
+      <div class="tl-actions">
+        <button class="btn small" id="btnSeek" title="截断当前时间轴并回到该节点">↩ 回到该节点</button>
+        <button class="btn small" id="btnBranch" title="保留原方案，从该节点派生新方案">⑂ 从此节点分叉新方案</button>
+        <span class="tl-hint">点击时间轴选择时间节点；彩色标记 = 决策与突发事件</span>
+      </div>
+      <div id="tlMarkers" class="tl-legend"></div>
+    </div>
+  </section>
+
+  <!-- 右：区段详情与告警 -->
+  <section class="panel detail-panel">
+    <h2>区段实时详情</h2>
+    <div id="segmentDetail" class="seg-detail empty">点击隧道任一区段查看实时变化与受影响人员</div>
+    <h2 class="mt">告警与影响范围</h2>
+    <div id="alerts" class="alerts"><div class="empty-note">暂无告警</div></div>
+    <h2 class="mt">已保存方案</h2>
+    <div id="planList" class="plan-list"></div>
+  </section>
+</main>
+
+<!-- 方案对比浮层 -->
+<div id="compareModal" class="modal hidden">
+  <div class="modal-body wide">
+    <div class="modal-head">
+      <h2>多方案同步回放对比</h2>
+      <button class="btn small" id="btnCloseCompare">关闭</button>
+    </div>
+    <div class="compare-controls">
+      <button class="btn primary" id="cmpPlay">▶ 同步播放</button>
+      <button class="btn" id="cmpPause">⏸ 暂停</button>
+      <input type="range" id="cmpScrub" min="0" max="0" value="0" />
+      <span class="clock" id="cmpClock">00:00</span>
+    </div>
+    <div id="compareTracks" class="compare-tracks"></div>
+    <div class="compare-metrics">
+      <h3>关键指标对比</h3>
+      <div id="compareMetrics"></div>
+    </div>
+    <div id="compareIssues" class="compare-issues"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

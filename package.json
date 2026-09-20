@@ -1,0 +1,14 @@
+{
+  "name": "tunnel-fire-simulation",
+  "version": "1.0.0",
+  "description": "城市隧道通风与火灾疏散推演系统",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/engine.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
